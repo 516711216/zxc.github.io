@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Map Event Editor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3B82F6',
+                        secondary: '#10B981',
+                        accent: '#F59E0B',
+                        dark: '#1E293B',
+                        light: '#F8FAFC'
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .transition-all-300 {
+                transition: all 0.3s ease;
+            }
+            .card-shadow {
+                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            }
+            .btn-hover {
+                @apply transform hover:scale-105 transition-all duration-300;
+            }
+        }
+
+        /* 新增图标选择面板样式 */
+        .icon-panel {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background-color: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+            display: none;
+            grid-template-columns: repeat(16, 30px);
+            gap: 4px;
+            padding: 8px;
+            max-height: calc(10 * (30px + 4px));
+            overflow-y: auto;
+        }
+
+        .icon-panel.show {
+            display: grid;
+        }
+
+        .icon-panel img {
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .icon-panel img:hover {
+            transform: scale(1.2);
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 font-inter text-dark min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-[clamp(1.8rem,4vw,2.5rem)] font-bold text-primary mb-2">Map Event Editor</h1>
+            <p class="text-gray-600">导入文本并转换为游戏地图事件数据</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- 左侧控制面板 -->
+            <div class="bg-white rounded-xl p-6 card-shadow relative">
+                <h2 class="text-xl font-semibold mb-4 flex items-center">
+                    <i class="fa fa-cog text-primary mr-2"></i>控制面板
+                </h2>
+
+                <!-- JSON导入区域 -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-medium mb-2 flex items-center">
+                        <i class="fa fa-file-code text-accent mr-2"></i>导入初始JSON数据
+                    </h3>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <input type="file" id="jsonFileInput" accept=".json" class="hidden">
+                        <label for="jsonFileInput" class="btn-hover bg-accent text-white px-4 py-2 rounded-lg flex items-center justify-center cursor-pointer">
+                            <i class="fa fa-upload mr-2"></i>选择JSON文件
+                        </label>
+                        <button id="loadDefaultJsonBtn" class="btn-hover bg-gray-200 text-dark px-4 py-2 rounded-lg flex items-center justify-center">
+                            <i class="fa fa-refresh mr-2"></i>加载默认数据
+                        </button>
+                    </div>
+                    <div id="jsonLoadStatus" class="mt-2 text-sm text-gray-500"></div>
+                </div>
+
+                <!-- 关键词配置区域 -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-medium mb-2 flex items-center">
+                        <i class="fa fa-tags text-secondary mr-2"></i>关键词配置
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">地点关键词</label>
+                            <input type="text" id="locationKeywords" placeholder="如: 村庄,森林,城堡" value="深渊界,魔人帝国首都,土地" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all-300">
+                            <p class="text-xs text-gray-500 mt-1">用逗号分隔多个关键词</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">物品关键词</label>
+                            <input type="text" id="itemKeywords" placeholder="如: 剑,盾牌,药水" value="食人草" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all-300">
+                            <p class="text-xs text-gray-500 mt-1">用逗号分隔多个关键词</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 事件文本输入区域 -->
+                <div class="mb-6 relative">
+                    <h3 class="text-lg font-medium mb-2 flex items-center">
+                        <i class="fa fa-align-left text-secondary mr-2"></i>事件文本输入
+                        <!-- 新增图标选择按钮 -->
+                        <button id="iconSelectBtn" class="btn-hover bg-gray-200 text-dark px-2 py-1 rounded-lg ml-2 flex items-center justify-center">
+                            <i class="fa fa-smile mr-1"></i>图标
+                        </button>
+                        <!-- 新增图标导入按钮 -->
+                        <input type="file" id="iconFileInput" accept="image/*" class="hidden">
+                        <label for="iconFileInput" class="btn-hover bg-gray-200 text-dark px-2 py-1 rounded-lg ml-1 flex items-center justify-center cursor-pointer">
+                            <i class="fa fa-upload mr-1"></i>导入
+                        </label>
+                    </h3>
+                    <textarea id="textInput" rows="8" placeholder="输入大量文本（每行最多24个字符）" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all-300"></textarea>
+                    <p class="text-xs text-gray-500 mt-1">每行最多24个字符，每4行将被组合成一个文本框</p>
+                </div>
+
+                <!-- 事件ID输入框 -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-medium mb-2 flex items-center">
+                        <i class="fa fa-id-card text-accent mr-2"></i>选择事件ID
+                    </h3>
+                    <input type="number" id="eventIdInput" placeholder="输入事件ID" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all-300">
+                </div>
+
+                <!-- 操作按钮 -->
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <button id="importTextBtn" class="btn-hover bg-primary text-white px-4 py-3 rounded-lg flex-1 flex items-center justify-center">
+                        <i class="fa fa-file-text mr-2"></i>导入文本
+                    </button>
+                    <button id="addEventBtn" class="btn-hover bg-secondary text-white px-4 py-3 rounded-lg flex-1 flex items-center justify-center">
+                        <i class="fa fa-plus-circle mr-2"></i>批量添加事件
+                    </button>
+                </div>
+
+                <!-- 导出按钮 -->
+                <div class="mt-4 flex flex-col sm:flex-row gap-3">
+                    <button id="downloadJsonBtn" class="btn-hover bg-dark text-white px-4 py-2 rounded-lg flex items-center justify-center">
+                        <i class="fa fa-download mr-2"></i>下载JSON文件
+                    </button>
+                    <button id="copyToClipboardBtn" class="btn-hover bg-gray-200 text-dark px-4 py-2 rounded-lg flex items-center justify-center">
+                        <i class="fa fa-clipboard mr-2"></i>复制到剪贴板
+                    </button>
+                </div>
+            </div>
+
+            <!-- 右侧预览面板 -->
+            <div class="bg-white rounded-xl p-6 card-shadow relative">
+                <h2 class="text-xl font-semibold mb-4 flex items-center">
+                    <i class="fa fa-eye text-primary mr-2"></i>JSON数据预览
+                </h2>
+                <div class="relative">
+                    <div id="jsonOutput" class="bg-gray-50 p-4 rounded-lg overflow-auto max-h-[600px] text-sm font-mono"></div>
+                    <div id="jsonLoading" class="absolute inset-0 bg-white/80 flex items-center justify-center hidden">
+                        <div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+                    </div>
+                </div>
+
+                <!-- 预览区域 -->
+                <div class="mt-6 relative">
+                    <h3 class="text-lg font-medium mb-2 flex items-center">
+                        <i class="fa fa-mobile text-accent mr-2"></i>文本预览
+                    </h3>
+                    <div id="textPreview" class="bg-gray-50 p-4 rounded-lg min-h-[100px] text-sm"></div>
+                    <!-- 图标选择面板移至文本预览下方 -->
+                    <div id="iconPanel" class="icon-panel"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 通知区域 -->
+        <div id="notification" class="fixed bottom-4 right-4 bg-white p-4 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 max-w-xs"></div>
+    </div>
+
+    <script>
+        // 初始的 JSON 数据（默认值）
+        const DEFAULT_MAP_DATA = {
+            "autoplayBgm": false,
+            "autoplayBgs": false,
+            "battleback1Name": "",
+            "battleback2Name": "",
+            "bgm": {
+                "name": "",
+                "pan": 0,
+                "pitch": 100,
+                "volume": 90
+            },
+            "bgs": {
+                "name": "",
+                "pan": 0,
+                "pitch": 100,
+                "volume": 90
+            },
+            "disableDashing": false,
+            "displayName": "",
+            "encounterList": [],
+            "encounterStep": 30,
+            "height": 1,
+            "note": "",
+            "parallaxLoopX": false,
+            "parallaxLoopY": false,
+            "parallaxName": "",
+            "parallaxShow": true,
+            "parallaxSx": 0,
+            "parallaxSy": 0,
+            "scrollType": 0,
+            "specifyBattleback": false,
+            "tilesetId": 1,
+            "width": 1,
+            "data": [0, 0, 0, 0, 0, 0],
+            "events": [null]
+        };
+
+        // 当前的 JSON 数据
+        let mapData = JSON.parse(JSON.stringify(DEFAULT_MAP_DATA));
+
+        // DOM 元素
+        const textInput = document.getElementById('textInput');
+        const jsonOutput = document.getElementById('jsonOutput');
+        const jsonFileInput = document.getElementById('jsonFileInput');
+        const jsonLoadStatus = document.getElementById('jsonLoadStatus');
+        const importTextBtn = document.getElementById('importTextBtn');
+        const addEventBtn = document.getElementById('addEventBtn');
+        const downloadJsonBtn = document.getElementById('downloadJsonBtn');
+        const copyToClipboardBtn = document.getElementById('copyToClipboardBtn');
+        const loadDefaultJsonBtn = document.getElementById('loadDefaultJsonBtn');
+        const jsonLoading = document.getElementById('jsonLoading');
+        const notification = document.getElementById('notification');
+        const locationKeywords = document.getElementById('locationKeywords');
+        const itemKeywords = document.getElementById('itemKeywords');
+        const textPreview = document.getElementById('textPreview');
+        const eventIdInput = document.getElementById('eventIdInput');
+        const iconSelectBtn = document.getElementById('iconSelectBtn');
+        const iconPanel = document.getElementById('iconPanel');
+        const iconFileInput = document.getElementById('iconFileInput');
+
+        // 颜色代码配置
+        const COLOR_CODES = {
+            RESET: 0,      // 默认颜色
+            LOCATION: 1,   // 地点颜色
+            ITEM: 2        // 物品颜色
+        };
+
+        // 图标代码索引
+        const ICON_INDEX = {};
+        let iconIndex = 0;
+
+        // 显示通知
+        function showNotification(message, type = 'info') {
+            notification.textContent = message;
+            notification.className = 'fixed bottom-4 right-4 p-4 rounded-lg shadow-lg transform transition-all duration-300 max-w-xs';
+
+            if (type === 'success') {
+                notification.classList.add('bg-green-50', 'border-l-4', 'border-green-400', 'text-green-700');
+            } else if (type === 'error') {
+                notification.classList.add('bg-red-50', 'border-l-4', 'border-red-400', 'text-red-700');
+            } else {
+                notification.classList.add('bg-blue-50', 'border-l-4', 'border-blue-400', 'text-blue-700');
+            }
+
+            // 显示通知
+            setTimeout(() => {
+                notification.classList.remove('translate-y-20', 'opacity-0');
+            }, 10);
+
+            // 3秒后隐藏
+            setTimeout(() => {
+                notification.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // 显示 JSON 数据
+        function displayJSON() {
+            jsonLoading.classList.remove('hidden');
+
+            // 使用setTimeout模拟加载过程，实际应用中可能不需要
+            setTimeout(() => {
+                try {
+                    // 格式化JSON并添加语法高亮
+                    const formattedJson = JSON.stringify(mapData, null, 2);
+                    const highlightedJson = formatJSONWithSyntaxHighlight(formattedJson);
+                    jsonOutput.innerHTML = highlightedJson;
+                    jsonLoadStatus.textContent = '数据已加载';
+                } catch (error) {
+                    jsonOutput.textContent = `JSON 格式化错误: ${error.message}`;
+                    jsonLoadStatus.textContent = 'JSON 格式化错误';
+                }
+
+                jsonLoading.classList.add('hidden');
+            }, 300);
+        }
+
+        // JSON语法高亮
+        function formatJSONWithSyntaxHighlight(json) {
+            return json
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?)/g, '<span class="text-blue-600">$1</span>')
+              .replace(/(:\s*)(true|false|null)/g, '$1<span class="text-red-500">$2</span>')
+              .replace(/(:\s*)(-?\d+(?:\.\d+)?)/g, '$1<span class="text-green-600">$2</span>');
+        }
+
+        // 导入JSON文件
+        function loadJsonFile(file) {
+            const reader = new FileReader();
+
+            reader.onload = function (e) {
+                try {
+                    const fileContent = e.target.result;
+                    const parsedJson = JSON.parse(fileContent);
+
+                    // 验证JSON结构
+                    if (!parsedJson || !parsedJson.events) {
+                        throw new Error('无效的地图数据格式，缺少"events"属性');
+                    }
+
+                    mapData = parsedJson;
+                    displayJSON();
+                    showNotification('JSON数据已成功导入');
+                } catch (error) {
+                    jsonLoadStatus.textContent = `错误: ${error.message}`;
+                    showNotification(`JSON解析错误: ${error.message}`, 'error');
+                }
+            };
+
+            reader.onerror = function () {
+                jsonLoadStatus.textContent = '读取文件时发生错误';
+                showNotification('读取文件时发生错误', 'error');
+            };
+
+            reader.readAsText(file);
+        }
+
+        // 处理文本中的颜色控制代码和关键词、图标代码
+        function processTextWithColorAndIcons(text) {
+            if (!text) return '';
+
+            // 获取关键词列表
+            const locationList = locationKeywords.value.split(',').map(keyword => keyword.trim()).filter(Boolean);
+            const itemList = itemKeywords.value.split(',').map(keyword => keyword.trim()).filter(Boolean);
+
+            // 替换关键词为带颜色代码和图标代码的文本
+            let processedText = text;
+
+            // 处理地点关键词
+            locationList.forEach(keyword => {
+                const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(escapedKeyword, 'g');
+                let iconCode = ICON_INDEX[keyword] ? `\\I[${ICON_INDEX[keyword]}]` : '';
+                processedText = processedText.replace(regex, `\\C[${COLOR_CODES.LOCATION}]${keyword}\\C[${COLOR_CODES.RESET}]${iconCode}`);
+            });
+
+            // 处理物品关键词
+            itemList.forEach(keyword => {
+                const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(escapedKeyword, 'g');
+                let iconCode = ICON_INDEX[keyword] ? `\\I[${ICON_INDEX[keyword]}]` : '';
+                processedText = processedText.replace(regex, `\\C[${COLOR_CODES.ITEM}]${keyword}\\C[${COLOR_CODES.RESET}]${iconCode}`);
+            });
+
+            // 确保文本末尾有颜色重置代码
+            if (!processedText.endsWith(`\\C[${COLOR_CODES.RESET}]`)) {
+                processedText += `\\C[${COLOR_CODES.RESET}]`;
+            }
+
+            // 修复格式错误的颜色代码，确保 \\C[颜色] 后面总是跟着文本
+            processedText = processedText.replace(/\\C\[(\d+)\]\\C\[0\]/g, '\\C[$1]');
+
+            return processedText;
+        }
+
+        // 计算文本长度，忽略控制代码
+        function getTextLengthWithoutControlCodes(text) {
+            // 移除所有\C[n]和\I[n]格式的控制代码
+            const cleanText = text.replace(/\\C\[\d+\]/g, '').replace(/\\I\[\d+\]/g, '');
+            return cleanText.length;
+        }
+
+        // 分割文本行，考虑控制代码不计入字数
+        function splitTextLines(text) {
+            const lines = [];
+            let currentLine = '';
+            let currentLineLength = 0;
+
+            // 按字符处理文本，同时跟踪控制代码
+            let i = 0;
+            while (i < text.length) {
+                // 检查是否是控制代码的开始
+                if ((text[i] === '\\' && i + 4 < text.length && text[i + 1] === 'C' && text[i + 2] === '[') ||
+                    (text[i] === '\\' && i + 4 < text.length && text[i + 1] === 'I' && text[i + 2] === '[')) {
+                    // 找到控制代码的结束位置
+                    const endIndex = text.indexOf(']', i + 3);
+                    if (endIndex !== -1) {
+                        // 将控制代码添加到当前行
+                        const controlCode = text.substring(i, endIndex + 1);
+                        currentLine += controlCode;
+                        i = endIndex + 1;
+                        continue;
+                    }
+                }
+
+                // 普通字符处理
+                currentLine += text[i];
+                currentLineLength++;
+                i++;
+
+                // 检查当前行长度是否达到限制
+                if (currentLineLength >= 24) {
+                    lines.push(currentLine);
+                    currentLine = '';
+                    currentLineLength = 0;
+                }
+            }
+
+            // 添加最后一行
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+
+            return lines;
+        }
+
+        // 更新文本预览
+        function updateTextPreview(formattedLines) {
+            if (!formattedLines || formattedLines.length === 0) {
+                textPreview.innerHTML = '<p class="text-gray-400">无预览内容</p>';
+                return;
+            }
+
+            let previewHtml = '';
+            formattedLines.forEach(line => {
+                // 替换颜色控制代码为HTML样式
+                let htmlLine = line
+                  .replace(/\\C\[0\]/g, '<span class="text-gray-800">')
+                  .replace(/\\C\[1\]/g, '<span class="text-blue-600">')
+                  .replace(/\\C\[2\]/g, '<span class="text-green-600">')
+                  .replace(/<\/span><span/g, '<span');
+
+                // 替换图标控制代码为图标占位符（这里简单显示代码）
+                htmlLine = htmlLine.replace(/\\I\[(\d+)\]/g, '[图标$1]');
+
+                // 确保所有span标签都闭合
+                htmlLine += '</span>';
+
+                previewHtml += `<p class="mb-1">${htmlLine}</p>`;
+            });
+
+            textPreview.innerHTML = previewHtml;
+        }
+
+        // 导入文本并插入到指定ID的事件中
+        function importText() {
+            const text = textInput.value.trim();
+            const eventId = parseInt(eventIdInput.value);
+
+            if (!text) {
+                showNotification('请先输入文本内容', 'error');
+                return;
+            }
+
+            if (isNaN(eventId)) {
+                showNotification('请输入有效的事件ID', 'error');
+                return;
+            }
+
+            // 处理文本中的颜色控制代码、关键词和图标代码
+            const processedText = processTextWithColorAndIcons(text);
+
+            // 分割文本行，考虑控制代码不计入字数
+            const processedLines = splitTextLines(processedText);
+
+            // 更新文本预览
+            updateTextPreview(processedLines);
+
+            // 找到指定ID的事件
+            const targetEvent = mapData.events.find(event => event && event.id === eventId);
+
+            if (!targetEvent) {
+                showNotification(`未找到ID为 ${eventId} 的事件`, 'error');
+                return;
+            }
+
+            // 处理文本行，每4行一组
+            let currentTextBoxLines = [];
+
+            for (let line of processedLines) {
+                if (line.trim() === '') continue; // 跳过空行
+
+                currentTextBoxLines.push(line);
+
+                // 如果达到4行，添加到事件并重置
+                if (currentTextBoxLines.length === 4) {
+                    addTextBoxToEvent(targetEvent, currentTextBoxLines);
+                    currentTextBoxLines = [];
+                }
+            }
+
+            // 添加最后一组（不足4行）
+            if (currentTextBoxLines.length > 0) {
+                addTextBoxToEvent(targetEvent, currentTextBoxLines);
+            }
+
+            // 确保空指令在指令列表末尾
+            ensureEmptyCommandAtEnd(targetEvent);
+
+            displayJSON();
+            showNotification('文本已成功插入到指定事件中');
+        }
+
+        // 将文本框内容添加到事件
+        function addTextBoxToEvent(event, lines) {
+            // 添加等待指令
+            event.pages[0].list.push({
+                "code": 101,
+                "indent": 0,
+                "parameters": ["", 0, 0, 2]
+            });
+
+            // 添加文本内容
+            for (let line of lines) {
+                event.pages[0].list.push({
+                    "code": 401,
+                    "indent": 0,
+                    "parameters": [line]
+                });
+            }
+        }
+
+        // 确保空指令在指令列表末尾
+        function ensureEmptyCommandAtEnd(event) {
+            const list = event.pages[0].list;
+
+            // 移除所有空指令
+            const filteredList = list.filter(command => command.code !== 0);
+
+            // 在列表末尾添加一个空指令
+            filteredList.push({
+                "code": 0,
+                "indent": 0,
+                "parameters": []
+            });
+
+            // 更新指令列表
+            event.pages[0].list = filteredList;
+        }
+
+        // 下载JSON文件
+        function downloadJSON() {
+            const jsonString = JSON.stringify(mapData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'map_data.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showNotification('JSON文件已下载');
+        }
+
+        // 复制JSON到剪贴板
+        function copyJSONToClipboard() {
+            const jsonString = JSON.stringify(mapData, null, 2);
+
+            navigator.clipboard.writeText(jsonString)
+              .then(() => {
+                    showNotification('JSON内容已复制到剪贴板');
+                })
+              .catch(err => {
+                    showNotification('无法复制内容: ' + err, 'error');
+                });
+        }
+
+        // 加载默认JSON数据
+        function loadDefaultJson() {
+            mapData = JSON.parse(JSON.stringify(DEFAULT_MAP_DATA));
+            displayJSON();
+            textInput.value = '';
+            textPreview.innerHTML = '<p class="text-gray-400">无预览内容</p>';
+            showNotification('已加载默认地图数据');
+        }
+
+        // 显示图标选择面板
+        function showIconPanel() {
+            iconPanel.classList.toggle('show');
+        }
+
+        // 插入图标代码到文本输入框
+        function insertIconCode(code) {
+            const start = textInput.selectionStart;
+            const end = textInput.selectionEnd;
+            const value = textInput.value;
+            textInput.value = value.substring(0, start) + code + value.substring(end);
+            textInput.selectionStart = textInput.selectionEnd = start + code.length;
+            iconPanel.classList.remove('show');
+        }
+
+        // 处理自定义导入图标
+        function handleIconImport(file) {
+            const reader = new FileReader();
+
+            reader.onload = function (e) {
+                const img = new Image();
+                img.src = e.target.result;
+
+                img.onload = function () {
+                    // 清空现有图标
+                    iconPanel.innerHTML = '';
+                    iconIndex = 0;
+
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 30;
+                    canvas.height = 30;
+
+                    // 按16×20网格分割图标
+                    const iconWidth = img.width / 16;
+                    const iconHeight = img.height / 20;
+
+                    for (let y = 0; y < 20; y++) {
+                        for (let x = 0; x < 16; x++) {
+                            ctx.clearRect(0, 0, 30, 30);
+                            ctx.drawImage(img, x * iconWidth, y * iconHeight, iconWidth, iconHeight, 0, 0, 30, 30);
+                            const iconDataUrl = canvas.toDataURL('image/png');
+                            const iconImg = document.createElement('img');
+                            iconImg.src = iconDataUrl;
+                            iconImg.dataset.iconCode = `\\I[${iconIndex}]`;
+                            iconImg.addEventListener('click', () => insertIconCode(iconImg.dataset.iconCode));
+                            iconPanel.appendChild(iconImg);
+
+                            // 关联关键词和图标代码
+                            const allKeywords = locationKeywords.value.split(',').map(keyword => keyword.trim()).filter(Boolean)
+                              .concat(itemKeywords.value.split(',').map(keyword => keyword.trim()).filter(Boolean));
+                            if (allKeywords[iconIndex]) {
+                                ICON_INDEX[allKeywords[iconIndex]] = iconIndex;
+                            }
+
+                            iconIndex++;
+                        }
+                    }
+
+                    showNotification('图标已成功导入');
+                };
+            };
+
+            reader.readAsDataURL(file);
+        }
+
+        // 事件监听器
+        jsonFileInput.addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) {
+                jsonLoadStatus.textContent = `正在加载: ${file.name}`;
+                loadJsonFile(file);
+            }
+        });
+
+        importTextBtn.addEventListener('click', importText);
+        addEventBtn.addEventListener('click', importText);
+        downloadJsonBtn.addEventListener('click', downloadJSON);
+        copyToClipboardBtn.addEventListener('click', copyJSONToClipboard);
+        loadDefaultJsonBtn.addEventListener('click', loadDefaultJson);
+        iconSelectBtn.addEventListener('click', showIconPanel);
+        iconFileInput.addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (file) {
+                handleIconImport(file);
+            }
+        });
+
+        // 点击页面其他区域关闭图标面板
+        document.addEventListener('click', function (e) {
+            if (!iconPanel.contains(e.target) && e.target !== iconSelectBtn) {
+                iconPanel.classList.remove('show');
+            }
+        });
+
+        // 初始显示 JSON 数据
+        displayJSON();
+        textPreview.innerHTML = '<p class="text-gray-400">输入文本并处理后在此预览</p>';
+
+        // 示例图标（可替换为实际图标）
+        const sampleIconUrls = [
+            'https://picsum.photos/seed/icon1/30/30',
+            'https://picsum.photos/seed/icon2/30/30',
+            'https://picsum.photos/seed/icon3/30/30',
+            'https://picsum.photos/seed/icon4/30/30',
+            'https://picsum.photos/seed/icon5/30/30',
+            'https://picsum.photos/seed/icon6/30/30',
+            'https://picsum.photos/seed/icon7/30/30',
+            'https://picsum.photos/seed/icon8/30/30',
+            'https://picsum.photos/seed/icon9/30/30',
+            'https://picsum.photos/seed/icon10/30/30',
+            'https://picsum.photos/seed/icon11/30/30',
+            'https://picsum.photos/seed/icon12/30/30',
+            'https://picsum.photos/seed/icon13/30/30',
+            'https://picsum.photos/seed/icon14/30/30',
+            'https://picsum.photos/seed/icon15/30/30',
+            'https://picsum.photos/seed/icon16/30/30',
+        ];
+
+        // 添加示例图标
+        sampleIconUrls.forEach((url, index) => {
+            const iconImg = document.createElement('img');
+            iconImg.src = url;
+            iconImg.dataset.iconCode = `\\I[${index}]`;
+            iconImg.addEventListener('click', () => insertIconCode(iconImg.dataset.iconCode));
+            iconPanel.appendChild(iconImg);
+
+            // 关联关键词和图标代码
+            const allKeywords = locationKeywords.value.split(',').map(keyword => keyword.trim()).filter(Boolean)
+              .concat(itemKeywords.value.split(',').map(keyword => keyword.trim()).filter(Boolean));
+            if (allKeywords[index]) {
+                ICON_INDEX[allKeywords[index]] = index;
+            }
+        });
+
+        iconIndex = sampleIconUrls.length;
+    </script>
+</body>
+
+</html>
+    
